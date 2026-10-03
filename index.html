@@ -827,6 +827,7 @@
       
       document.getElementById('setupView').style.display = 'none';
       document.getElementById('gameView').style.display = 'block';
+      saveAutoBackup();
     }
 
     function initLogic() {
@@ -895,6 +896,23 @@
       }
     }
 
+    const AUTO_BACKUP_KEY = 'judgementAutoBackup';
+
+    function saveAutoBackup() {
+      if (!state.rounds.length) return false;
+
+      try {
+        localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify({
+          savedAt: new Date().toISOString(),
+          state
+        }));
+        return true;
+      } catch (error) {
+        console.error('Automatic backup failed:', error);
+        return false;
+      }
+    }
+
     function handleInput(roundIdx, playerIdx, type, value) {
       state.rounds[roundIdx][type][playerIdx] = value;
       computeStats();
@@ -913,6 +931,7 @@
           r.lastInvalidBidPopupValue = null;
         }
       }
+      saveAutoBackup();
     }
 
     function showLastBidRestriction(roundIdx) {
@@ -1351,6 +1370,8 @@
         closeRanksModal();
       }
     });
+
+    setInterval(saveAutoBackup, 60 * 1000);
   </script>
 
   <div style="margin-top: 1.5rem; padding-top: 0.9rem; border-top: 1px solid rgba(148,163,184,0.25); text-align: center; font-size: 0.78rem; letter-spacing: 0.06em; color: rgba(255,255,255,0.8); font-weight: 500;"><div style="display:block; width:100%; margin-top: 1.5rem; padding: 0.85rem 1rem; border: 1px solid rgba(148,163,184,0.35); border-radius: 10px; background: rgba(15,23,42,0.82); box-shadow: 0 8px 18px rgba(15,23,42,0.22); text-align: center; font-size: 0.78rem; line-height: 1.4; letter-spacing: 0.06em; color: #f8fafc; font-weight: 700;">© 2026 Narendra Datar. All rights reserved.</div></div>
