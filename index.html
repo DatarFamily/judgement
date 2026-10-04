@@ -1059,8 +1059,20 @@
       state.rounds[roundIdx][type][playerIdx] = value;
       computeStats();
       renderUpdates(roundIdx);
-      if (type === 'bids' && playerIdx === state.players.length - 2) {
-        showLastBidRestriction(roundIdx);
+      if (type === 'bids') {
+        const r = state.rounds[roundIdx];
+        const enteredBidCount = state.players.filter((player, index) => {
+          const bid = r.bids[index];
+          return bid !== undefined && bid !== null && bid !== '';
+        }).length;
+        if (enteredBidCount === state.players.length - 1) {
+          if (!r.lastBidRestrictionShown) {
+            showLastBidRestriction(roundIdx);
+            r.lastBidRestrictionShown = true;
+          }
+        } else {
+          r.lastBidRestrictionShown = false;
+        }
       }
       if (type === 'bids' && playerIdx === state.players.length - 1) {
         const r = state.rounds[roundIdx];
@@ -1078,12 +1090,17 @@
 
     function showLastBidRestriction(roundIdx) {
       const r = state.rounds[roundIdx];
-      const lastPlayerIndex = state.players.length - 1;
-      const priorBids = state.players.slice(0, lastPlayerIndex).map((player, playerIdx) => r.bids[playerIdx]);
-      if (priorBids.some(value => value === undefined || value === null || value === '')) return;
+      const missingPlayerIndex = state.players.findIndex((player, playerIdx) => {
+        const bid = r.bids[playerIdx];
+        return bid === undefined || bid === null || bid === '';
+      });
+      if (missingPlayerIndex === -1) return;
+      const priorBids = state.players
+        .map((player, playerIdx) => r.bids[playerIdx])
+        .filter((value, playerIdx) => playerIdx !== missingPlayerIndex);
       const priorTotal = priorBids.reduce((total, value) => total + parseInt(value, 10), 0);
       const forbiddenBid = r.cardsDealt - priorTotal;
-      document.getElementById('lastBidMessage').textContent = `${state.players[lastPlayerIndex]} cannot bid ${forbiddenBid}. The bids must not add up to ${r.cardsDealt} cards (${priorBids.join(' + ')} + last bid).`;
+      document.getElementById('lastBidMessage').textContent = `${state.players[missingPlayerIndex]} cannot bid ${forbiddenBid}. The bids must not add up to ${r.cardsDealt} cards (${priorBids.join(' + ')} + their bid).`;
       document.getElementById('lastBidModal').style.display = 'flex';
     }
 
