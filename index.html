@@ -585,6 +585,41 @@
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
     }
 
+    .player-chart-modal {
+      width: min(760px, calc(100vw - 2rem));
+      max-width: 760px !important;
+    }
+
+    .player-chart {
+      width: 100%;
+      aspect-ratio: 720 / 320;
+      display: block;
+    }
+
+    .player-chart-trigger {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      box-shadow: none;
+    }
+
+    .player-chart-trigger:hover {
+      color: var(--accent);
+      background: none;
+      text-decoration: underline;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .player-chart-empty {
+      color: var(--text-muted);
+      text-align: center;
+      padding: 2rem 0;
+    }
+
     .modal-header {
       display: flex;
       justify-content: space-between;
@@ -800,6 +835,16 @@
       <div class="modal-body" id="ranksList">
         <!-- Ranks populated by JS -->
       </div>
+    </div>
+  </div>
+
+  <div id="playerChartModal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="playerChartTitle">
+    <div class="modal-content glass-panel player-chart-modal">
+      <div class="modal-header">
+        <h3 id="playerChartTitle" style="margin: 0;">Player Score History</h3>
+        <button onclick="closePlayerChart()" class="close-btn" aria-label="Close score chart">&times;</button>
+      </div>
+      <div id="playerChartContent" class="modal-body"></div>
     </div>
   </div>
 
@@ -1142,7 +1187,7 @@
               ondragleave="handleHeaderDragLeave(event, ${pIdx})"
               ondragend="handleHeaderDragEnd(event)"
               ondrop="handleHeaderDrop(event, ${pIdx})">
-            <div>${p}</div>
+            <div><button type="button" class="player-chart-trigger" onclick="showPlayerChart(${pIdx})" title="Show ${p}'s score history">${p}</button></div>
             <span id="rank-header-${pIdx}"></span>
           </th>
         `;
@@ -1508,7 +1553,7 @@
         item.innerHTML = `
           <div class="player-info">
             <span class="rank-badge ${badgeCls}">#${p.rank}</span>
-            <span class="player-name">${p.name}</span>
+            <button type="button" class="player-name player-chart-trigger" onclick="showPlayerChart(${p.pIdx})">${p.name}</button>
           </div>
           <span class="player-score ${scoreCls}">${p.score} pts</span>
         `;
@@ -1522,12 +1567,83 @@
       document.getElementById('ranksModal').style.display = 'none';
     }
 
+    function showPlayerChart(playerIdx) {
+      if (!state.players[playerIdx]) return;
+      computeStats();
+
+      const playerName = state.players[playerIdx];
+      const points = state.rounds
+        .map((round, roundIdx) => ({
+          round: roundIdx + 1,
+          score: round.scores[playerIdx],
+          cumulative: round.cums[playerIdx]
+        }))
+        .filter(point => Number.isFinite(point.score) && Number.isFinite(point.cumulative));
+
+      document.getElementById('playerChartTitle').textContent = `${playerName} - Cumulative Score`;
+      const content = document.getElementById('playerChartContent');
+      if (!points.length) {
+        content.innerHTML = '<p class="player-chart-empty">No completed scores to display yet.</p>';
+      } else {
+        content.innerHTML = buildPlayerScoreChart(points);
+      }
+      document.getElementById('playerChartModal').style.display = 'flex';
+    }
+
+    function buildPlayerScoreChart(points) {
+      const width = 720;
+      const height = 320;
+      const margin = { top: 20, right: 24, bottom: 42, left: 64 };
+      const plotWidth = width - margin.left - margin.right;
+      const plotHeight = height - margin.top - margin.bottom;
+      const values = points.map(point => point.cumulative);
+      let minValue = Math.min(0, ...values);
+      let maxValue = Math.max(0, ...values);
+      if (minValue === maxValue) {
+        minValue -= 10;
+        maxValue += 10;
+      } else {
+        const padding = (maxValue - minValue) * 0.1;
+        minValue -= padding;
+        maxValue += padding;
+      }
+
+      const x = index => margin.left + (points.length === 1 ? plotWidth / 2 : index * plotWidth / (points.length - 1));
+      const y = value => margin.top + (maxValue - value) * plotHeight / (maxValue - minValue);
+      const grid = Array.from({ length: 5 }, (_, index) => {
+        const value = maxValue - index * (maxValue - minValue) / 4;
+        const position = y(value);
+        return `<line x1="${margin.left}" y1="${position}" x2="${width - margin.right}" y2="${position}" stroke="#334155" stroke-width="1"/><text x="${margin.left - 10}" y="${position + 4}" fill="#94a3b8" text-anchor="end" font-size="12">${Math.round(value)}</text>`;
+      }).join('');
+      const labelStep = Math.max(1, Math.ceil((points.length - 1) / 8));
+      const xLabels = points.map((point, index) => {
+        if (index % labelStep !== 0 && index !== points.length - 1) return '';
+        return `<text x="${x(index)}" y="${height - 12}" fill="#94a3b8" text-anchor="middle" font-size="12">${point.round}</text>`;
+      }).join('');
+      const linePoints = points.map((point, index) => `${x(index)},${y(point.cumulative)}`).join(' ');
+      const markers = points.map((point, index) => `<circle cx="${x(index)}" cy="${y(point.cumulative)}" r="4" fill="#10b981"><title>Round ${point.round}: ${point.cumulative} cumulative points (round score ${point.score})</title></circle>`).join('');
+      const zeroLine = minValue < 0 && maxValue > 0
+        ? `<line x1="${margin.left}" y1="${y(0)}" x2="${width - margin.right}" y2="${y(0)}" stroke="#94a3b8" stroke-dasharray="4 4" stroke-width="1.5"/>`
+        : '';
+
+      return `<svg class="player-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Cumulative score by round">
+        ${grid}${zeroLine}
+        <polyline points="${linePoints}" fill="none" stroke="#10b981" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        ${markers}${xLabels}
+      </svg>`;
+    }
+
+    function closePlayerChart() {
+      document.getElementById('playerChartModal').style.display = 'none';
+    }
+
     // Close modal when clicking outside the content area
     window.addEventListener('click', function(event) {
       const modal = document.getElementById('ranksModal');
       if (event.target === modal) {
         closeRanksModal();
       }
+      if (event.target === document.getElementById('playerChartModal')) closePlayerChart();
     });
 
     updateBackupStatus();
